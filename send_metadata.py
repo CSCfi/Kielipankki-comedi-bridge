@@ -121,14 +121,14 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
     """
     Send all metadata from META-SHARE to COMEDI.
     """
-    records = 0
+    successful_records = 0
+    failed_records = 0
     for cmdi_record in metashare_cmdi_records(metashare_api_url):
         metashare_identifier = cmdi_record.xpath(
             "oai:header/oai:identifier/text()",
             namespaces={"oai": "http://www.openarchives.org/OAI/2.0/"},
         )[0]
 
-        records += 1
         try:
             cmdi_data = extract_cmdi_metadata(cmdi_record)
             urn = extract_urn(cmdi_record)
@@ -137,6 +137,8 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
                 f"Error when handling META-SHARE record {metashare_identifier}: {str(err)}",
                 err=True,
             )
+            failed_records += 1
+            continue
 
         try:
             upload_cmdi_to_comedi(
@@ -151,10 +153,15 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
                 f"COMEDI upload failed for META-SHARE record {metashare_identifier} / {urn}: {str(err)}",
                 err=True,
             )
+            failed_records += 1
         else:
             click.echo(f"Successfully uploaded {metashare_identifier} / {urn}")
+            successful_records += 1
 
-    print(f"{records} processed")
+    print(
+        f"{successful_records + failed_records} processed, "
+        f"{successful_records} uploads and {failed_records} failures."
+    )
 
 
 if __name__ == "__main__":
