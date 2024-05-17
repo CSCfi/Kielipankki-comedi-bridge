@@ -29,50 +29,13 @@ def metashare_cmdi_records(metashare_api_url):
             break
 
 
-def upload_cmdi_to_comedi(metashare_record, comedi_upload_url, session_id, published):
+def upload_cmdi_to_comedi(cmdi_data, urn, comedi_upload_url, session_id, published):
     """
     Upload the given XML record to COMEDI
 
     In case of errors, a message is printed to stdout and the problematic record is
     skipped.
     """
-    try:
-        cmdi_record = metashare_record.xpath(
-            "oai:metadata/cmd:CMD",
-            namespaces={
-                "oai": "http://www.openarchives.org/OAI/2.0/",
-                "cmd": "http://www.clarin.eu/cmd/",
-            },
-        )[0]
-        xml_content = lxml.etree.tostring(
-            cmdi_record, xml_declaration=True, encoding="utf-8"
-        )
-    except IndexError:
-        metashare_identifier = metashare_record.xpath(
-            "oai:header/oai:identifier/text()",
-            namespaces={"oai": "http://www.openarchives.org/OAI/2.0/"},
-        )[0]
-        print(f"No CMDI record found for {metashare_identifier}")
-        return
-
-    try:
-        urn_url = cmdi_record.xpath(
-            "cmd:Components/cmd:resourceInfo/cmd:identificationInfo/cmd:identifier/text()",
-            namespaces={"cmd": "http://www.clarin.eu/cmd/"},
-        )[0]
-    except IndexError:
-        metashare_identifier = metashare_record.xpath(
-            "oai:header/oai:identifier/text()",
-            namespaces={"oai": "http://www.openarchives.org/OAI/2.0/"},
-        )[0]
-        print(f"No urn found for {metashare_identifier}")
-        return
-
-    try:
-        urn = urn_url.split("urn:nbn:fi:")[1]
-    except IndexError:
-        print(f"Could not parse urn {urn_url}")
-        return
 
     params = {
         "group": "FIN-CLARIN",
@@ -84,7 +47,7 @@ def upload_cmdi_to_comedi(metashare_record, comedi_upload_url, session_id, publi
     response = requests.post(
         comedi_upload_url,
         params=params,
-        files={"file": (f"{urn}.xml", xml_content, "text/xml")},
+        files={"file": (f"{urn}.xml", cmdi_data, "text/xml")},
     )
     response.raise_for_status()
 
@@ -92,6 +55,50 @@ def upload_cmdi_to_comedi(metashare_record, comedi_upload_url, session_id, publi
         print(f"Upload failed: {response.json()['error']}")
     elif "success" not in response.json() or not response.json()["success"]:
         print("Something went wrong: {response.json()}")
+
+
+def extract_cmdi_metadata(metashare_record):
+    """
+    Return the CMDI metadata from META-SHARE record as XML string
+    """
+    try:
+        cmdi_record = metashare_record.xpath(
+            "oai:metadata/cmd:CMD",
+            namespaces={
+                "oai": "http://www.openarchives.org/OAI/2.0/",
+                "cmd": "http://www.clarin.eu/cmd/",
+            },
+        )[0]
+    except IndexError:
+        raise ParseError("No CMDI record found")
+
+    xml_content = lxml.etree.tostring(
+        cmdi_record, xml_declaration=True, encoding="utf-8"
+    )
+    return xml_content
+
+
+def extract_urn(metashare_record):
+    """
+    Return the unique part of the URN (e.g. "lb-1234") from META-SHARE record.
+    """
+    try:
+        urn_url = metashare_record.xpath(
+            "oai:metadata/cmd:CMD/cmd:Components/cmd:resourceInfo/cmd:identificationInfo/cmd:identifier/text()",
+            namespaces={
+                "oai": "http://www.openarchives.org/OAI/2.0/",
+                "cmd": "http://www.clarin.eu/cmd/",
+            },
+        )[0]
+    except IndexError:
+        raise ParseError("No urn found")
+
+    try:
+        urn = urn_url.split("urn:nbn:fi:")[1]
+    except IndexError:
+        raise ParseError(f"Could not parse urn {urn_url}")
+
+    return urn
 
 
 @click.command()
@@ -105,13 +112,28 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
     """
     records = 0
     for cmdi_record in metashare_cmdi_records(metashare_api_url):
+        metashare_identifier = cmdi_record.xpath(
+            "oai:header/oai:identifier/text()",
+            namespaces={"oai": "http://www.openarchives.org/OAI/2.0/"},
+        )[0]
+
         records += 1
+        try:
+            cmdi_data = extract_cmdi_metadata(cmdi_record)
+            urn = extract_urn(cmdi_record)
+        except ParseError as err:
+            click.echo(
+                f"Error when handling META-SHARE record {metashare_identifier}: {str(err)}"
+            )
+
         upload_cmdi_to_comedi(
-            cmdi_record,
+            cmdi_data,
+            urn,
             comedi_upload_url,
             session_id=comedi_session_id,
             published=publish,
         )
+
     print(f"{records} processed")
 
 
@@ -119,3 +141,9 @@ if __name__ == "__main__":
     # pylint does not understand click wrappers
     # pylint: disable=no-value-for-parameter
     send_metadata()
+
+
+class ParseError(Exception):
+    """
+    For reporting errors in XML parsing in a more user-friendly way
+    """
