@@ -5,6 +5,18 @@ import lxml
 from sickle import Sickle, oaiexceptions
 
 
+class ParseError(Exception):
+    """
+    For reporting errors in XML parsing in a more user-friendly way
+    """
+
+
+class UploadError(Exception):
+    """
+    For reporting errors in COMEDI uploads
+    """
+
+
 def metashare_cmdi_records(metashare_api_url):
     """
     Iterate over all records in META-SHARE in CMDI format.
@@ -24,7 +36,6 @@ def metashare_cmdi_records(metashare_api_url):
                 )
             except oaiexceptions.CannotDisseminateFormat:
                 continue
-            print(record.identifier)
             yield response.xml
             break
 
@@ -52,9 +63,9 @@ def upload_cmdi_to_comedi(cmdi_data, urn, comedi_upload_url, session_id, publish
     response.raise_for_status()
 
     if "error" in response.json():
-        print(f"Upload failed: {response.json()['error']}")
-    elif "success" not in response.json() or not response.json()["success"]:
-        print("Something went wrong: {response.json()}")
+        raise UploadError(f"Upload failed: {response.json()['error']}")
+    if "success" not in response.json() or not response.json()["success"]:
+        raise UploadError("Something went wrong: {response.json()}")
 
 
 def extract_cmdi_metadata(metashare_record):
@@ -123,16 +134,25 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
             urn = extract_urn(cmdi_record)
         except ParseError as err:
             click.echo(
-                f"Error when handling META-SHARE record {metashare_identifier}: {str(err)}"
+                f"Error when handling META-SHARE record {metashare_identifier}: {str(err)}",
+                err=True,
             )
 
-        upload_cmdi_to_comedi(
-            cmdi_data,
-            urn,
-            comedi_upload_url,
-            session_id=comedi_session_id,
-            published=publish,
-        )
+        try:
+            upload_cmdi_to_comedi(
+                cmdi_data,
+                urn,
+                comedi_upload_url,
+                session_id=comedi_session_id,
+                published=publish,
+            )
+        except UploadError as err:
+            click.echo(
+                f"COMEDI upload failed for META-SHARE record {metashare_identifier} / {urn}: {str(err)}",
+                err=True,
+            )
+        else:
+            click.echo(f"Successfully uploaded {metashare_identifier} / {urn}")
 
     print(f"{records} processed")
 
@@ -141,9 +161,3 @@ if __name__ == "__main__":
     # pylint does not understand click wrappers
     # pylint: disable=no-value-for-parameter
     send_metadata()
-
-
-class ParseError(Exception):
-    """
-    For reporting errors in XML parsing in a more user-friendly way
-    """
