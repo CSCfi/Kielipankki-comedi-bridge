@@ -92,6 +92,9 @@ def extract_cmdi_metadata(metashare_record):
 def extract_urn(metashare_record):
     """
     Return the unique part of the URN (e.g. "lb-1234") from META-SHARE record.
+
+    Unfortunately some of our URNs have trailing whitespace (e.g. "lb-1234 "): that is
+    not allowed in COMEDI identifiers, so whitespace is stripped.
     """
     try:
         urn_url = metashare_record.xpath(
@@ -109,7 +112,7 @@ def extract_urn(metashare_record):
     except IndexError:
         raise ParseError(f"Could not parse urn {urn_url}")
 
-    return urn
+    return urn.strip()
 
 
 @click.command()
