@@ -111,6 +111,17 @@ def self_link_urn_only(metashare_cmdi_record):
     self_link_element.text = self_link_element.text.split("urn.fi/")[1]
 
 
+def drop_metashare_id(metashare_cmdi_record):
+    """
+    Remove the metaShareId, as that has no relevance (nor relevant data) in CMDI.
+    """
+    metashare_id_element = metashare_cmdi_record.xpath(
+        "cmd:Components/cmd:resourceInfo/cmd:identificationInfo/cmd:metaShareId",
+        namespaces={"cmd": "http://www.clarin.eu/cmd/"},
+    )[0]
+    metashare_id_element.getparent().remove(metashare_id_element)
+
+
 def extract_urn(metashare_record):
     """
     Return the unique part of the URN (e.g. "lb-1234") from META-SHARE record.
@@ -156,7 +167,7 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
 
         try:
             cmdi_data = extract_cmdi_metadata(
-                cmdi_record, modifiers=[self_link_urn_only]
+                cmdi_record, modifiers=[self_link_urn_only, drop_metashare_id]
             )
 
             urn = extract_urn(cmdi_record)
