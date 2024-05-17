@@ -36,6 +36,7 @@ def metashare_cmdi_records(metashare_api_url):
                 )
             except oaiexceptions.CannotDisseminateFormat:
                 continue
+
             yield response.xml
             break
 
@@ -68,10 +69,16 @@ def upload_cmdi_to_comedi(cmdi_data, urn, comedi_upload_url, session_id, publish
         raise UploadError("Something went wrong: {response.json()}")
 
 
-def extract_cmdi_metadata(metashare_record):
+def extract_cmdi_metadata(metashare_record, modifiers):
     """
-    Return the CMDI metadata from META-SHARE record as XML string
+    Return the CMDI metadata from META-SHARE record as XML string.
+
+    Modifiers are assumed to be functions that take a single parameter (the CMDI record
+    XML as lxml) and modify it in place.
     """
+    if not modifiers:
+        modifiers = []
+
     try:
         cmdi_record = metashare_record.xpath(
             "oai:metadata/cmd:CMD",
@@ -83,10 +90,25 @@ def extract_cmdi_metadata(metashare_record):
     except IndexError:
         raise ParseError("No CMDI record found")
 
+    for modifier in modifiers:
+        modifier(cmdi_record)
+
     xml_content = lxml.etree.tostring(
         cmdi_record, xml_declaration=True, encoding="utf-8"
     )
     return xml_content
+
+
+def self_link_urn_only(metashare_cmdi_record):
+    """
+    Adjust the self identifier to be a plain URN, without the URL part.
+
+    E.g. "http://urn.fi/urn:nbn:fi:lb-123" becomes "urn:nbn:fi:lb-123".
+    """
+    self_link_element = metashare_cmdi_record.xpath(
+        "cmd:Header/cmd:MdSelfLink", namespaces={"cmd": "http://www.clarin.eu/cmd/"}
+    )[0]
+    self_link_element.text = self_link_element.text.split("urn.fi/")[1]
 
 
 def extract_urn(metashare_record):
@@ -133,7 +155,10 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
         )[0]
 
         try:
-            cmdi_data = extract_cmdi_metadata(cmdi_record)
+            cmdi_data = extract_cmdi_metadata(
+                cmdi_record, modifiers=[self_link_urn_only]
+            )
+
             urn = extract_urn(cmdi_record)
         except ParseError as err:
             click.echo(
