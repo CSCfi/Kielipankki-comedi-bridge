@@ -74,8 +74,24 @@ def upload_cmdi_to_comedi(metashare_record, comedi_upload_url, session_id, publi
         print(f"Could not parse urn {urn_url}")
         return
 
-    print("TODO: upload record")
-    return
+    params = {
+        "group": "FIN-CLARIN",
+        "session-id": session_id,
+    }
+    if published:
+        params["published"] = True
+
+    response = requests.post(
+        comedi_upload_url,
+        params=params,
+        files={"file": (f"{urn}.xml", xml_content, "text/xml")},
+    )
+    response.raise_for_status()
+
+    if "error" in response.json():
+        print(f"Upload failed: {response.json()['error']}")
+    elif "success" not in response.json() or not response.json()["success"]:
+        print("Something went wrong: {response.json()}")
 
 
 @click.command()
