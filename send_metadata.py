@@ -101,25 +101,37 @@ def extract_cmdi_metadata(metashare_record, modifiers):
 
 def self_link_urn_only(metashare_cmdi_record):
     """
-    Adjust the self identifier to be a plain URN, without the URL part.
+    Adjust the self identifier to be a plain URN, without the URL part. If self link is
+    not present (e.g. record creation in progress).
 
     E.g. "http://urn.fi/urn:nbn:fi:lb-123" becomes "urn:nbn:fi:lb-123".
+
     """
-    self_link_element = metashare_cmdi_record.xpath(
-        "cmd:Header/cmd:MdSelfLink", namespaces={"cmd": "http://www.clarin.eu/cmd/"}
-    )[0]
+    try:
+        self_link_element = metashare_cmdi_record.xpath(
+            "cmd:Header/cmd:MdSelfLink", namespaces={"cmd": "http://www.clarin.eu/cmd/"}
+        )[0]
+    except IndexError as err:
+        raise ParseError("Self link not found")
     self_link_element.text = self_link_element.text.split("urn.fi/")[1]
 
 
 def drop_metashare_id(metashare_cmdi_record):
     """
     Remove the metaShareId, as that has no relevance (nor relevant data) in CMDI.
+
+    If the element is not present, nothing is done.
     """
-    metashare_id_element = metashare_cmdi_record.xpath(
-        "cmd:Components/cmd:resourceInfo/cmd:identificationInfo/cmd:metaShareId",
-        namespaces={"cmd": "http://www.clarin.eu/cmd/"},
-    )[0]
-    metashare_id_element.getparent().remove(metashare_id_element)
+    try:
+        metashare_id_element = metashare_cmdi_record.xpath(
+            "cmd:Components/cmd:resourceInfo/cmd:identificationInfo/cmd:metaShareId",
+            namespaces={"cmd": "http://www.clarin.eu/cmd/"},
+        )[0]
+    except IndexError:
+        print("META-SHARE identifier not found")
+        pass
+    else:
+        metashare_id_element.getparent().remove(metashare_id_element)
 
 
 def extract_urn(metashare_record):
