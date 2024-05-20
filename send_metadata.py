@@ -148,12 +148,29 @@ def extract_urn(metashare_record):
     return urn.strip()
 
 
+def delete_from_comedi(identifier, session_id):
+    """
+    Delete a record from COMEDI.
+    """
+    requests.get(
+        "https://clarino.uib.no/comedi/rest?command=delete-record",
+        params={"session-id": session_id, "identifier": identifier},
+    )
+
+
 @click.command()
 @click.argument("comedi_session_id")
 @click.option("--metashare-api-url", default="https://kielipankki.fi/md_api/que")
 @click.option("--comedi-upload-url", default="https://clarino.uib.no/comedi/upload")
 @click.option("--publish/--unpublish", default=False)
-def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publish):
+@click.option("--delete-before-upload", default=False, is_flag=True)
+def send_metadata(
+    comedi_session_id,
+    metashare_api_url,
+    comedi_upload_url,
+    publish,
+    delete_before_upload,
+):
     """
     Send all metadata from META-SHARE to COMEDI.
     """
@@ -178,6 +195,9 @@ def send_metadata(comedi_session_id, metashare_api_url, comedi_upload_url, publi
             )
             failed_records += 1
             continue
+
+        if delete_before_upload:
+            delete_from_comedi(urn, comedi_session_id)
 
         try:
             upload_cmdi_to_comedi(
